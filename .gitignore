@@ -1,0 +1,23 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# --- 팀 설정 ---
+/.idea/
+.kotlin/
+*.apk
+*.aab
+# Firebase 설정(프로젝트 키 포함): 팀원끼리 따로 전달
+app/google-services.json
