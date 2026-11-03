@@ -30,6 +30,8 @@ interface AuthRepository {
     val currentUserId: StateFlow<String?>
     /** Firebase에 연결된 진짜 로그인인지 (false면 테스트용 가짜 로그인) */
     val usesFirebase: Boolean
+    /** 로그인한 계정의 이메일 (설정 화면 표시용). 모르면 null */
+    val currentEmail: String?
     suspend fun signInWithEmail(email: String, password: String): Result<Unit>
     suspend fun signUpWithEmail(email: String, password: String): Result<Unit>
     /** activityContext: 화면의 LocalContext.current (계정 선택 창을 띄우는 데 필요) */
@@ -46,6 +48,7 @@ class FirebaseAuthRepository : AuthRepository {
     private val user = MutableStateFlow(auth.currentUser?.uid)
     override val currentUserId: StateFlow<String?> = user
     override val usesFirebase = true
+    override val currentEmail: String? get() = auth.currentUser?.email
 
     init {
         auth.addAuthStateListener { user.value = it.currentUser?.uid }
@@ -128,6 +131,7 @@ class FakeAuthRepository(private val sessionStore: SessionStore? = null) : AuthR
     private val user = MutableStateFlow<String?>(null)
     override val currentUserId: StateFlow<String?> = user
     override val usesFirebase = false
+    override val currentEmail: String? get() = user.value?.removePrefix("fake-")
 
     override suspend fun signInWithEmail(email: String, password: String): Result<Unit> {
         if (!email.contains("@") || password.length < 6) {
