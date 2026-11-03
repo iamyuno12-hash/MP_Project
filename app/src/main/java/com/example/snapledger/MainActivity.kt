@@ -13,7 +13,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             SnapLedgerTheme {
-                AppRoot()
+                // 새로 켰을 때만 '로그인 상태 유지'를 끈 사용자를 로그아웃시킨다
+                AppRoot(freshStart = savedInstanceState == null)
             }
         }
     }

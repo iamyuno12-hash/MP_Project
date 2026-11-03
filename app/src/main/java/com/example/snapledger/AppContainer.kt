@@ -7,6 +7,7 @@ import com.example.snapledger.data.firebase.FakeAuthRepository
 import com.example.snapledger.data.firebase.FirebaseAuthRepository
 import com.google.firebase.FirebaseApp
 import com.example.snapledger.data.local.AppDatabase
+import com.example.snapledger.data.local.SessionStore
 import com.example.snapledger.data.local.SettingsStore
 import com.example.snapledger.data.remote.KakaoApiClient
 import com.example.snapledger.data.repository.CategoryClassifier
@@ -36,9 +37,11 @@ class AppContainer(context: Context) {
     private val database = AppDatabase.build(appContext)
 
     val expenseRepository: ExpenseRepository = RoomExpenseRepository(database.expenseDao())
+    /** 로그인 상태 유지(자동 로그인) 설정 */
+    val sessionStore = SessionStore(appContext)
     // google-services.json이 들어가 Firebase가 켜져 있으면 진짜 로그인, 아니면 테스트용 가짜 로그인
     val authRepository: AuthRepository =
-        if (FirebaseApp.getApps(appContext).isNotEmpty()) FirebaseAuthRepository() else FakeAuthRepository()
+        if (FirebaseApp.getApps(appContext).isNotEmpty()) FirebaseAuthRepository() else FakeAuthRepository(sessionStore)
     val settingsStore = SettingsStore(appContext)
 
     val categoryClassifier = CategoryClassifier(
