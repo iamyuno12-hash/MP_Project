@@ -72,6 +72,7 @@ data class StatsUiState(
     val count: Int = 0,
     val shares: List<CategoryShare> = emptyList(),
     val year: YearSummary? = null,          // 연도별 모드에서만 채움
+    val comparison: MonthComparison? = null, // 월별 모드에서만 채움 (지난달과 비교)
     val canGoNext: Boolean = false,         // 다음 기간이 미래면 false
 ) {
     val mode: StatsMode get() = period.mode
@@ -113,7 +114,8 @@ class StatsViewModel(repository: ExpenseRepository) : ViewModel() {
     }
 
     private fun queryRange(p: StatsPeriod): Pair<Long, Long> = when (p.mode) {
-        StatsMode.MONTH -> p.month.millisRange()
+        // 지난달과 비교하려고 지난달 1일부터 함께 가져온다
+        StatsMode.MONTH -> p.month.minusMonths(1).millisRange().first to p.month.millisRange().second
         StatsMode.YEAR -> Year.of(p.month.year).millisRange()
     }
 
@@ -129,6 +131,11 @@ class StatsViewModel(repository: ExpenseRepository) : ViewModel() {
             count = inPeriod.size,
             shares = StatsCalculator.categoryShares(inPeriod),
             year = if (p.mode == StatsMode.YEAR) StatsCalculator.yearSummary(inPeriod, p.month.year, today, zone) else null,
+            comparison = if (p.mode == StatsMode.MONTH) {
+                StatsCalculator.compareWithPreviousMonth(list, p.month, today, zone)
+            } else {
+                null
+            },
             canGoNext = canGoNext(p, today),
         )
     }
@@ -172,6 +179,12 @@ fun StatsScreen() {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        val comparison = state.comparison
+        if (comparison != null && (state.total > 0L || comparison.hasPrevious)) {
+            Spacer(Modifier.height(24.dp))
+            SpendingCompareChart(comparison)
+        }
 
         if (state.total == 0L) {
             Spacer(Modifier.height(24.dp))

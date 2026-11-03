@@ -12,4 +12,7 @@ object ChartColors {
 
     /** 강조하지 않은 막대: 강조색(primary 파랑)과 같은 계열의 연한 단계 */
     val BarMuted = Color(0xFF86B6EF)
+
+    /** 비교 대상(지난달) 선: 강조색 옆에서 한발 물러나 보이는 회색 (흰 바탕 대비 3:1 이상) */
+    val Previous = Color(0xFF898781)
 }
