@@ -2,6 +2,7 @@ package com.example.snapledger.ui.stats
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,8 +23,12 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -102,6 +107,11 @@ class StatsViewModel(repository: ExpenseRepository) : ViewModel() {
         p.copy(month = minOf(moved, YearMonth.now()))   // 연도를 넘길 때 미래 달로 가지 않게
     }
 
+    /** 연도별 그래프에서 고른 달의 월별 통계로 이동 */
+    fun openMonth(month: YearMonth) {
+        if (month <= YearMonth.now()) period.value = StatsPeriod(StatsMode.MONTH, month)
+    }
+
     private fun queryRange(p: StatsPeriod): Pair<Long, Long> = when (p.mode) {
         StatsMode.MONTH -> p.month.millisRange()
         StatsMode.YEAR -> Year.of(p.month.year).millisRange()
@@ -169,6 +179,11 @@ fun StatsScreen() {
             return@Column
         }
 
+        if (year != null) {
+            Spacer(Modifier.height(24.dp))
+            YearSection(year = year, onOpenMonth = vm::openMonth)
+        }
+
         Spacer(Modifier.height(24.dp))
         Text("카테고리별 지출", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
@@ -206,6 +221,34 @@ private fun PeriodSelector(title: String, canGoNext: Boolean, onPrevious: () -> 
         IconButton(onClick = onNext, enabled = canGoNext) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "다음 기간")
         }
+    }
+}
+
+/** 연도별: 1~12월 막대 그래프. 막대를 누르면 그 달 금액을 보여주고, 그 달 통계로 갈 수 있다 */
+@Composable
+private fun ColumnScope.YearSection(year: YearSummary, onOpenMonth: (YearMonth) -> Unit) {
+    var tapped by remember(year.year) { mutableStateOf<Int?>(null) }
+    val shown = tapped ?: year.peakMonth
+
+    Text("월별 지출", style = MaterialTheme.typography.titleMedium)
+    if (shown != null) {
+        val amount = year.monthly[shown - 1].toWon()
+        Text(
+            if (tapped == null) "가장 많이 쓴 달 · ${shown}월 $amount" else "${shown}월 · $amount",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    MonthlyBarChart(monthly = year.monthly, selectedMonth = shown, onSelect = { tapped = it })
+
+    if (shown != null) {
+        val month = YearMonth.of(year.year, shown)
+        TextButton(
+            onClick = { onOpenMonth(month) },
+            enabled = month <= YearMonth.now(),
+            modifier = Modifier.align(Alignment.End),
+        ) { Text("${shown}월 자세히 보기") }
     }
 }
 
