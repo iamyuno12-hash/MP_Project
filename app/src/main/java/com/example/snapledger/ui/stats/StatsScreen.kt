@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -199,8 +198,10 @@ fun StatsScreen() {
 
         Spacer(Modifier.height(24.dp))
         Text("카테고리별 지출", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
-        CategoryList(state.shares)
+        Spacer(Modifier.height(16.dp))
+        CategoryDonutChart(state.shares, modifier = Modifier.align(Alignment.CenterHorizontally))
+        Spacer(Modifier.height(16.dp))
+        CategoryLegend(state.shares)
     }
 }
 
@@ -269,19 +270,5 @@ private fun ColumnScope.YearSection(year: YearSummary, onOpenMonth: (YearMonth) 
             enabled = month <= YearMonth.now(),
             modifier = Modifier.align(Alignment.End),
         ) { Text("${shown}월 자세히 보기") }
-    }
-}
-
-@Composable
-private fun CategoryList(shares: List<CategoryShare>) {
-    shares.forEach { share ->
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(share.category.label)
-            Text("${share.percentText}  ·  ${share.amount.toWon()}")
-        }
-        HorizontalDivider()
     }
 }
