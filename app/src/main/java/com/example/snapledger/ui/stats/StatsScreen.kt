@@ -20,7 +20,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.example.snapledger.data.repository.ExpenseRepository
-import com.example.snapledger.model.Category
 import com.example.snapledger.ui.common.appViewModel
 import com.example.snapledger.ui.common.millisRange
 import com.example.snapledger.ui.common.toWon
@@ -29,8 +28,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.YearMonth
-
-data class CategoryShare(val category: Category, val amount: Long, val percent: Int)
 
 data class StatsUiState(
     val month: YearMonth = YearMonth.now(),
@@ -44,14 +41,7 @@ class StatsViewModel(repository: ExpenseRepository) : ViewModel() {
 
     val uiState: StateFlow<StatsUiState> = repository.observeBetween(range.first, range.second)
         .map { list ->
-            val total = list.sumOf { it.amount }
-            val shares = list.groupBy { it.category }
-                .map { (category, items) ->
-                    val sum = items.sumOf { it.amount }
-                    CategoryShare(category, sum, if (total > 0) (sum * 100 / total).toInt() else 0)
-                }
-                .sortedByDescending { it.amount }
-            StatsUiState(month, total, shares)
+            StatsUiState(month, list.sumOf { it.amount }, StatsCalculator.categoryShares(list))
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatsUiState())
 }
@@ -75,7 +65,7 @@ fun StatsScreen() {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(share.category.label)
-                Text("${share.percent}%  ·  ${share.amount.toWon()}")
+                Text("${share.percentText}  ·  ${share.amount.toWon()}")
             }
             HorizontalDivider()
         }
