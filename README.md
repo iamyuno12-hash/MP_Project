@@ -12,10 +12,12 @@
 
 ## 주요 기능
 
-- **영수증 촬영 → 자동 입력**: ML Kit 문서 스캐너(테두리 인식·원근 보정) → ML Kit 한국어 글자 인식 → 규칙 기반 파서로 상호명·결제일시·합계·사업자번호 추출 → 확인 후 저장
+- **영수증 촬영 → 자동 입력**: ML Kit 문서 스캐너(테두리 인식·원근 보정) → 이미지 전처리(그림자 제거·대비 보정) → ML Kit 한국어 글자 인식 → 규칙 기반 파서로 상호명·결제일시·합계·사업자번호 추출 → 확인 후 저장
+  - 원본·보정 이미지를 둘 다 읽고, 값을 더 많이 찾은 쪽 결과를 사용
 - **카테고리 자동 분류**: 사용자 규칙 → 내장 키워드 사전 → 카카오 로컬 API 업종 조회
-- **지출 관리**: 이번 달 지출·예산 진행률, 최근 내역, 내역 상세(원본 영수증·수정·삭제), 카테고리별 통계, 월 예산
-- **로그인**: 이메일 회원가입·로그인, Google 로그인 (Firebase Authentication)
+- **통계**: 월별·연도별 통계와 이전 기간 이동, 지난달 같은 날까지와 비교하는 누적 지출 그래프, 카테고리 도넛 그래프, 연도별 월 지출 막대 그래프
+- **지출 관리**: 이번 달 지출·예산 진행률, 최근 내역, 내역 상세(원본 영수증·수정·삭제), 월 예산
+- **로그인**: 이메일 회원가입·로그인, Google 로그인 (Firebase Authentication), 자동 로그인(로그인 상태 유지)
 
 ## 기술 스택
 
@@ -27,7 +29,8 @@
 | 영수증 인식 | ML Kit Document Scanner, ML Kit Text Recognition v2 (한국어) |
 | 네트워크 | Retrofit2 + OkHttp (카카오 로컬 API) |
 | 서버 | Firebase Authentication, Cloud Firestore |
-| 테스트 | JUnit (영수증 파서 단위 테스트) |
+| 그래프 | Compose Canvas (누적 비교 선 그래프, 도넛, 막대) |
+| 테스트 | JUnit 단위 테스트 34개 (영수증 파서·이미지 보정·통계 계산·자동 로그인) |
 
 ## 프로젝트 구조
 
@@ -41,11 +44,11 @@ app/src/main/java/com/example/snapledger
 │   ├── remote/              카카오 로컬 API (Retrofit)
 │   ├── firebase/            로그인 (Firebase Auth, Google 로그인)
 │   └── repository/          ExpenseRepository, CategoryClassifier
-├── ocr/                     ML Kit 인식 결과 정리, 영수증 파서
+├── ocr/                     이미지 전처리, ML Kit 인식 결과 정리, 영수증 파서
 └── ui/                      화면별 Compose + ViewModel
     ├── login/  home/  capture/  confirm/  detail/  stats/  settings/
     └── navigation/  theme/  common/
-app/src/test/.../ReceiptParserTest.kt   영수증 파서 단위 테스트
+app/src/test/.../                       단위 테스트 (ReceiptParser, ReceiptImageFilter, StatsCalculator, MonthComparison, StartRoute)
 ```
 
 ## 실행 방법
