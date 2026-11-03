@@ -13,6 +13,7 @@ import com.example.snapledger.data.repository.CategoryClassifier
 import com.example.snapledger.data.repository.ExpenseRepository
 import com.example.snapledger.data.repository.RoomExpenseRepository
 import com.example.snapledger.ocr.ParsedReceipt
+import com.example.snapledger.ocr.ReceiptImagePreprocessor
 import com.example.snapledger.ocr.ReceiptParser
 import com.example.snapledger.ocr.ReceiptTextRecognizer
 
@@ -47,6 +48,7 @@ class AppContainer(context: Context) {
     )
 
     val receiptRecognizer = ReceiptTextRecognizer(appContext)
+    val receiptPreprocessor = ReceiptImagePreprocessor()
     val receiptParser = ReceiptParser()
 
     /** 촬영 화면 → 인식 결과 확인 화면으로 넘기는 임시 데이터 */
@@ -58,4 +60,8 @@ data class ReceiptDraft(
     val imagePath: String?,
     val parsed: ParsedReceipt,
     val recognizedLines: List<String> = emptyList(),
+    /** 글자 인식용으로 보정한 이미지 (보정에 실패했으면 null) */
+    val processedImagePath: String? = null,
+    /** 원본·보정 중 보정 이미지 쪽 인식 결과를 썼는지 */
+    val usedProcessedImage: Boolean = false,
 )

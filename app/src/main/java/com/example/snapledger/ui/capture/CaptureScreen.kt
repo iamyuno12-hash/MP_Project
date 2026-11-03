@@ -3,6 +3,7 @@ package com.example.snapledger.ui.capture
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Bitmap
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -44,11 +45,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.snapledger.AppContainer
 import com.example.snapledger.ReceiptDraft
+import com.example.snapledger.ocr.OcrRow
+import com.example.snapledger.ocr.ParsedReceipt
+import com.example.snapledger.ocr.RecognitionScorer
 import com.example.snapledger.ocr.toRows
 import com.example.snapledger.ui.common.appViewModel
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import com.google.mlkit.vision.text.Text as MlKitText
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,21 +70,37 @@ class CaptureViewModel(private val container: AppContainer) : ViewModel() {
         error = message
     }
 
-    /** 스캔된 영수증 → 앱 저장소에 원본 복사 → ML Kit 글자 인식 → 행 단위 파싱 → 확인 화면용 초안 */
+    /**
+     * 스캔된 영수증 → 앱 저장소에 원본 복사 → 두 가지 이미지로 글자 인식 → 더 잘 읽힌 쪽으로 확인 화면 초안
+     *  A) 문서 스캐너 결과 그대로
+     *  B) 그림자 제거·대비 보정한 이미지 (ReceiptImagePreprocessor)
+     * 사진마다 어느 쪽이 잘 읽히는지 달라서, 파서가 값을 더 많이 찾은 쪽을 고른다 (RecognitionScorer).
+     */
     fun recognize(imageUri: Uri, onDone: () -> Unit) {
         viewModelScope.launch {
             busy = true
             error = null
             try {
                 val saved = withContext(Dispatchers.IO) { copyToAppStorage(imageUri) }
-                val text = container.receiptRecognizer.recognize(Uri.fromFile(saved))
-                val rows = text.toRows()
+                val original = toReading(container.receiptRecognizer.recognize(Uri.fromFile(saved)))
+                val processed = readProcessed(saved)
+                val useProcessed = processed != null &&
+                    RecognitionScorer.preferProcessed(original.score, processed.reading.score)
+                val chosen = if (useProcessed) processed!!.reading else original
+
+                Log.d(
+                    "Receipt",
+                    "인식 점수: 원본 ${original.score}, 보정 ${processed?.reading?.score ?: "실패"} " +
+                        "→ ${if (useProcessed) "보정" else "원본"} 이미지 결과 사용",
+                )
                 // 테스트셋 만들 때 Logcat에서 'Receipt'로 검색해 복사 → ReceiptParserTest에 추가
-                Log.d("Receipt", rows.joinToString("\n") { "[h=${it.height}] ${it.text}" })
+                Log.d("Receipt", chosen.rows.joinToString("\n") { "[h=${it.height}] ${it.text}" })
                 container.pendingDraft = ReceiptDraft(
                     imagePath = saved.absolutePath,
-                    parsed = container.receiptParser.parseRows(rows),
-                    recognizedLines = rows.map { it.text },
+                    parsed = chosen.parsed,
+                    recognizedLines = chosen.rows.map { it.text },
+                    processedImagePath = processed?.imageFile?.absolutePath,
+                    usedProcessedImage = useProcessed,
                 )
                 onDone()
             } catch (e: Exception) {
@@ -87,6 +109,48 @@ class CaptureViewModel(private val container: AppContainer) : ViewModel() {
                 busy = false
             }
         }
+    }
+
+    /** 인식 결과 하나: 행 목록 + 파서가 뽑은 값 + 점수 */
+    private class Reading(val rows: List<OcrRow>, val parsed: ParsedReceipt) {
+        val score = RecognitionScorer.score(parsed, rows.map { it.text })
+    }
+
+    private class ProcessedReading(val reading: Reading, val imageFile: File)
+
+    private fun toReading(text: MlKitText): Reading {
+        val rows = text.toRows()
+        return Reading(rows, container.receiptParser.parseRows(rows))
+    }
+
+    /** 보정 이미지로 한 번 더 읽는다. 메모리 부족 등으로 실패하면 null → 원본 결과만 쓴다 */
+    private suspend fun readProcessed(source: File): ProcessedReading? =
+        try {
+            val bitmap = withContext(Dispatchers.Default) { container.receiptPreprocessor.preprocess(source) }
+            try {
+                val reading = toReading(container.receiptRecognizer.recognize(bitmap))
+                val preview = withContext(Dispatchers.IO) { savePreview(bitmap) }
+                ProcessedReading(reading, preview)
+            } finally {
+                bitmap.recycle()
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("Receipt", "보정 이미지 인식 실패, 원본 결과만 사용", e)
+            null
+        } catch (e: OutOfMemoryError) {
+            Log.w("Receipt", "보정 중 메모리 부족, 원본 결과만 사용", e)
+            null
+        }
+
+    /** 확인 화면의 '보정 이미지 보기'용으로 캐시 폴더에 저장 (다음 스캔 때 지움) */
+    private fun savePreview(bitmap: Bitmap): File {
+        val dir = File(container.appContext.cacheDir, "preprocessed").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val file = File(dir, "receipt_${System.currentTimeMillis()}.jpg")
+        file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        return file
     }
 
     fun startManualInput(onDone: () -> Unit) {

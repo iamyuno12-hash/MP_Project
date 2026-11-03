@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,13 @@ class ConfirmViewModel(private val container: AppContainer, private val expenseI
 
     var imagePath: String? = null
         private set
+    /** 글자 인식용으로 보정한 이미지 (영수증을 새로 스캔했을 때만 있음) */
+    var processedImagePath: String? = null
+        private set
+    var usedProcessedImage = false
+        private set
+    /** true면 원본 대신 보정 이미지를 보여준다 */
+    var showProcessed by mutableStateOf(false)
     private var businessNumber: String? = null
     private var createdAt: Long = System.currentTimeMillis()
     private var userPickedCategory = false
@@ -86,6 +94,8 @@ class ConfirmViewModel(private val container: AppContainer, private val expenseI
             container.pendingDraft?.let { draft ->
                 container.pendingDraft = null
                 imagePath = draft.imagePath
+                processedImagePath = draft.processedImagePath
+                usedProcessedImage = draft.usedProcessedImage
                 businessNumber = draft.parsed.businessNumber
                 storeName = draft.parsed.storeName.orEmpty()
                 draft.parsed.paidAt?.let { dateText = it.format(DATE_TIME_FORMAT) }
@@ -193,13 +203,28 @@ fun ConfirmScreen(expenseId: Long, onBack: () -> Unit, onSaved: () -> Unit) {
         }
 
         vm.imagePath?.let { path ->
+            val processedPath = vm.processedImagePath
+            val shownPath = if (vm.showProcessed && processedPath != null) processedPath else path
             // TODO(2단계): ML Kit 줄 좌표로 읽은 위치에 박스 표시
             AsyncImage(
-                model = File(path),
-                contentDescription = "영수증 원본",
+                model = File(shownPath),
+                contentDescription = if (shownPath == path) "영수증 원본" else "글자 인식용으로 보정한 영수증",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxWidth().height(180.dp).padding(vertical = 8.dp),
             )
+            if (processedPath != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        if (vm.usedProcessedImage) "보정한 이미지로 읽었어요" else "원본 이미지로 읽었어요",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { vm.showProcessed = !vm.showProcessed }) {
+                        Text(if (vm.showProcessed) "원본 보기" else "보정 이미지 보기")
+                    }
+                }
+            }
         }
 
         OutlinedTextField(
