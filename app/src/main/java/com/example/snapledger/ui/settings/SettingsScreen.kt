@@ -48,7 +48,13 @@ class SettingsViewModel(private val settings: SettingsStore, private val auth: A
         }
     }
 
-    fun signOut() = auth.signOut()
+    /** 저장된 로그인 정보까지 지운 뒤 onDone (로그인 화면으로 이동) */
+    fun signOut(onDone: () -> Unit) {
+        viewModelScope.launch {
+            auth.signOut()
+            onDone()
+        }
+    }
 }
 
 @Composable
@@ -82,10 +88,7 @@ fun SettingsScreen(onLoggedOut: () -> Unit) {
 
         Spacer(Modifier.height(24.dp))
         OutlinedButton(
-            onClick = {
-                vm.signOut()
-                onLoggedOut()
-            },
+            onClick = { vm.signOut(onLoggedOut) },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("로그아웃") }
     }
