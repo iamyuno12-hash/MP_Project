@@ -1,5 +1,7 @@
 package com.example.snapledger.ui.navigation
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
@@ -12,6 +14,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavHostController
@@ -22,9 +25,11 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.snapledger.ui.capture.CaptureScreen
+import com.example.snapledger.ui.common.appViewModel
 import com.example.snapledger.ui.confirm.ConfirmScreen
 import com.example.snapledger.ui.detail.DetailScreen
 import com.example.snapledger.ui.home.HomeScreen
+import com.example.snapledger.ui.login.AppLogo
 import com.example.snapledger.ui.login.LoginScreen
 import com.example.snapledger.ui.login.SignUpScreen
 import com.example.snapledger.ui.settings.SettingsScreen
@@ -54,8 +59,20 @@ private val bottomTabs = listOf(
     BottomTab(Routes.SETTINGS, "설정", Icons.Filled.Settings),
 )
 
+/**
+ * @param freshStart 앱을 새로 켰는지 (MainActivity의 savedInstanceState == null).
+ *   화면 회전이나 메모리 정리 후 복원일 때는 로그인 상태 유지 설정과 관계없이 로그아웃하지 않는다.
+ */
 @Composable
-fun AppRoot(navController: NavHostController = rememberNavController()) {
+fun AppRoot(freshStart: Boolean = true, navController: NavHostController = rememberNavController()) {
+    // 자동 로그인: 저장된 로그인 상태를 확인하는 동안(보통 순식간) 로고만 보여준다
+    val startVm = appViewModel { StartViewModel(it.authRepository, it.sessionStore, freshStart) }
+    val startRoute = startVm.startRoute
+    if (startRoute == null) {
+        StartSplash()
+        return
+    }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = bottomTabs.any { it.route == currentRoute }
@@ -84,7 +101,7 @@ fun AppRoot(navController: NavHostController = rememberNavController()) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.LOGIN,
+            startDestination = startRoute,   // 로그인 상태면 HOME, 아니면 LOGIN
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(Routes.LOGIN) {
@@ -160,4 +177,10 @@ fun AppRoot(navController: NavHostController = rememberNavController()) {
             }
         }
     }
+}
+
+/** 시작 화면을 정하는 동안 잠깐 보이는 로고 */
+@Composable
+private fun StartSplash() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { AppLogo() }
 }

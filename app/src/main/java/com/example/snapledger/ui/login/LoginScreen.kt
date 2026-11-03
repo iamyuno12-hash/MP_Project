@@ -22,7 +22,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -49,7 +48,6 @@ class LoginViewModel(private val auth: AuthRepository) : ViewModel() {
     var loading by mutableStateOf(false)
         private set
 
-    val isLoggedIn: Boolean get() = auth.currentUserId.value != null
     val usesFirebase: Boolean get() = auth.usesFirebase
 
     fun login(onSuccess: () -> Unit) {
@@ -79,9 +77,6 @@ class LoginViewModel(private val auth: AuthRepository) : ViewModel() {
 fun LoginScreen(onLoggedIn: () -> Unit, onSignUpClick: () -> Unit) {
     val vm = appViewModel { LoginViewModel(it.authRepository) }
     val context = LocalContext.current
-
-    // 이미 로그인한 상태면 바로 홈으로 (앱을 다시 켰을 때)
-    LaunchedEffect(Unit) { if (vm.isLoggedIn) onLoggedIn() }
 
     Column(
         modifier = Modifier
