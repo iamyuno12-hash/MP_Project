@@ -200,8 +200,15 @@ private fun ModeToggle(selected: StatsMode, onSelect: (StatsMode) -> Unit) {
                 selected = mode == selected,
                 onClick = { onSelect(mode) },
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = StatsMode.entries.size),
+                colors = SegmentedButtonDefaults.colors(
+                    activeContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                    activeContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
                 icon = {},
-            ) { Text(mode.label) }
+            ) {
+                // 한글은 글자 단위로 줄바꿈될 수 있어 '연도/별'로 나뉘지 않게 한 줄로 고정
+                Text(mode.label, maxLines = 1, softWrap = false)
+            }
         }
     }
 }
