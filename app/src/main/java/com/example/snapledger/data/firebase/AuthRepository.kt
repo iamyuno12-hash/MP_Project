@@ -6,6 +6,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
+import com.example.snapledger.data.local.SessionStore
 import com.google.android.gms.tasks.Task
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -29,11 +30,16 @@ interface AuthRepository {
     val currentUserId: StateFlow<String?>
     /** Firebase에 연결된 진짜 로그인인지 (false면 테스트용 가짜 로그인) */
     val usesFirebase: Boolean
+    /** 로그인한 계정의 이메일 (설정 화면 표시용). 모르면 null */
+    val currentEmail: String?
     suspend fun signInWithEmail(email: String, password: String): Result<Unit>
     suspend fun signUpWithEmail(email: String, password: String): Result<Unit>
     /** activityContext: 화면의 LocalContext.current (계정 선택 창을 띄우는 데 필요) */
     suspend fun signInWithGoogle(activityContext: Context): Result<Unit>
-    fun signOut()
+    suspend fun signOut()
+
+    /** 앱을 켤 때 기기에 저장된 로그인 상태를 불러온다 (Firebase는 스스로 저장·복원하므로 할 일 없음) */
+    suspend fun restoreSession() {}
 }
 
 /** Firebase Authentication 구현 (이메일 회원가입/로그인 + Google 로그인) */
@@ -42,6 +48,7 @@ class FirebaseAuthRepository : AuthRepository {
     private val user = MutableStateFlow(auth.currentUser?.uid)
     override val currentUserId: StateFlow<String?> = user
     override val usesFirebase = true
+    override val currentEmail: String? get() = auth.currentUser?.email
 
     init {
         auth.addAuthStateListener { user.value = it.currentUser?.uid }
@@ -79,7 +86,7 @@ class FirebaseAuthRepository : AuthRepository {
         auth.signInWithCredential(GoogleAuthProvider.getCredential(idToken, null)).awaitTask()
     }
 
-    override fun signOut() = auth.signOut()
+    override suspend fun signOut() = auth.signOut()
 
     /** google-services 플러그인이 json에서 만들어 주는 웹 클라이언트 ID (없으면 null) */
     private fun webClientId(context: Context): String? {
@@ -118,17 +125,21 @@ private suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { c
 /**
  * Firebase 연결 전에 쓰는 테스트용 가짜 로그인.
  * google-services.json이 없으면 AppContainer가 자동으로 이걸 쓴다.
+ * sessionStore를 넘기면 로그인 상태를 기기에 저장해, 앱을 다시 켜도 로그인이 유지된다.
  */
-class FakeAuthRepository : AuthRepository {
+class FakeAuthRepository(private val sessionStore: SessionStore? = null) : AuthRepository {
     private val user = MutableStateFlow<String?>(null)
     override val currentUserId: StateFlow<String?> = user
     override val usesFirebase = false
+    override val currentEmail: String? get() = user.value?.removePrefix("fake-")
 
     override suspend fun signInWithEmail(email: String, password: String): Result<Unit> {
         if (!email.contains("@") || password.length < 6) {
             return Result.failure(IllegalArgumentException("이메일과 6자 이상 비밀번호를 입력하세요"))
         }
-        user.value = "fake-$email"
+        val userId = "fake-${email.trim()}"
+        user.value = userId
+        sessionStore?.setTestUserId(userId)
         return Result.success(Unit)
     }
 
@@ -137,7 +148,12 @@ class FakeAuthRepository : AuthRepository {
     override suspend fun signInWithGoogle(activityContext: Context): Result<Unit> =
         Result.failure(IllegalStateException("Google 로그인은 Firebase를 연결한 뒤 사용할 수 있어요"))
 
-    override fun signOut() {
+    override suspend fun signOut() {
         user.value = null
+        sessionStore?.setTestUserId(null)
+    }
+
+    override suspend fun restoreSession() {
+        if (user.value == null) user.value = sessionStore?.testUserId()
     }
 }

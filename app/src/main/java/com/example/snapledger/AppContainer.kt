@@ -7,12 +7,14 @@ import com.example.snapledger.data.firebase.FakeAuthRepository
 import com.example.snapledger.data.firebase.FirebaseAuthRepository
 import com.google.firebase.FirebaseApp
 import com.example.snapledger.data.local.AppDatabase
+import com.example.snapledger.data.local.SessionStore
 import com.example.snapledger.data.local.SettingsStore
 import com.example.snapledger.data.remote.KakaoApiClient
 import com.example.snapledger.data.repository.CategoryClassifier
 import com.example.snapledger.data.repository.ExpenseRepository
 import com.example.snapledger.data.repository.RoomExpenseRepository
 import com.example.snapledger.ocr.ParsedReceipt
+import com.example.snapledger.ocr.ReceiptImagePreprocessor
 import com.example.snapledger.ocr.ReceiptParser
 import com.example.snapledger.ocr.ReceiptTextRecognizer
 
@@ -35,9 +37,11 @@ class AppContainer(context: Context) {
     private val database = AppDatabase.build(appContext)
 
     val expenseRepository: ExpenseRepository = RoomExpenseRepository(database.expenseDao())
+    /** 로그인 상태 유지(자동 로그인) 설정 */
+    val sessionStore = SessionStore(appContext)
     // google-services.json이 들어가 Firebase가 켜져 있으면 진짜 로그인, 아니면 테스트용 가짜 로그인
     val authRepository: AuthRepository =
-        if (FirebaseApp.getApps(appContext).isNotEmpty()) FirebaseAuthRepository() else FakeAuthRepository()
+        if (FirebaseApp.getApps(appContext).isNotEmpty()) FirebaseAuthRepository() else FakeAuthRepository(sessionStore)
     val settingsStore = SettingsStore(appContext)
 
     val categoryClassifier = CategoryClassifier(
@@ -47,6 +51,7 @@ class AppContainer(context: Context) {
     )
 
     val receiptRecognizer = ReceiptTextRecognizer(appContext)
+    val receiptPreprocessor = ReceiptImagePreprocessor()
     val receiptParser = ReceiptParser()
 
     /** 촬영 화면 → 인식 결과 확인 화면으로 넘기는 임시 데이터 */
@@ -58,4 +63,8 @@ data class ReceiptDraft(
     val imagePath: String?,
     val parsed: ParsedReceipt,
     val recognizedLines: List<String> = emptyList(),
+    /** 글자 인식용으로 보정한 이미지 (보정에 실패했으면 null) */
+    val processedImagePath: String? = null,
+    /** 원본·보정 중 보정 이미지 쪽 인식 결과를 썼는지 */
+    val usedProcessedImage: Boolean = false,
 )

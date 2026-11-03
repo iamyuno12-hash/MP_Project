@@ -1,12 +1,15 @@
 package com.example.snapledger.ocr
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.net.Uri
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.korean.KoreanTextRecognizerOptions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
@@ -18,12 +21,18 @@ class ReceiptTextRecognizer(private val context: Context) {
 
     /** 이미지에서 글자를 읽어 ML Kit 결과 그대로 돌려준다 (줄별 좌표 포함 → 확인 화면 박스 표시에 사용) */
     suspend fun recognize(imageUri: Uri): Text {
-        val image = InputImage.fromFilePath(context, imageUri)
-        return suspendCancellableCoroutine { cont ->
-            recognizer.process(image)
-                .addOnSuccessListener { text -> cont.resume(text) }
-                .addOnFailureListener { e -> cont.resumeWithException(e) }
-        }
+        // 큰 사진 파일을 여는(디코딩) 일은 화면이 멈추지 않게 메인 스레드 밖에서
+        val image = withContext(Dispatchers.IO) { InputImage.fromFilePath(context, imageUri) }
+        return process(image)
+    }
+
+    /** 보정한 이미지(ReceiptImagePreprocessor 결과)에서 글자 읽기 */
+    suspend fun recognize(bitmap: Bitmap): Text = process(InputImage.fromBitmap(bitmap, 0))
+
+    private suspend fun process(image: InputImage): Text = suspendCancellableCoroutine { cont ->
+        recognizer.process(image)
+            .addOnSuccessListener { text -> cont.resume(text) }
+            .addOnFailureListener { e -> cont.resumeWithException(e) }
     }
 }
 
