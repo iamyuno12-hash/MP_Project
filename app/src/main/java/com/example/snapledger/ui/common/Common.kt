@@ -11,6 +11,7 @@ import com.example.snapledger.SnapLedgerApplication
 import java.text.NumberFormat
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.Year
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -43,5 +44,12 @@ fun Long.toDateTimeText(): String = toLocalDateTime().format(DATE_TIME_FORMAT)
 fun YearMonth.millisRange(): Pair<Long, Long> {
     val start = atDay(1).atStartOfDay().toEpochMillis()
     val end = plusMonths(1).atDay(1).atStartOfDay().toEpochMillis() - 1
+    return start to end
+}
+
+/** 해당 연도의 시작~끝 시각 (epoch millis) */
+fun Year.millisRange(): Pair<Long, Long> {
+    val start = atDay(1).atStartOfDay().toEpochMillis()
+    val end = plusYears(1).atDay(1).atStartOfDay().toEpochMillis() - 1
     return start to end
 }
