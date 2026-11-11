@@ -17,6 +17,8 @@ import com.example.snapledger.ocr.ParsedReceipt
 import com.example.snapledger.ocr.ReceiptImagePreprocessor
 import com.example.snapledger.ocr.ReceiptParser
 import com.example.snapledger.ocr.ReceiptTextRecognizer
+import kotlinx.coroutines.flow.MutableStateFlow
+import java.time.YearMonth
 
 class SnapLedgerApplication : Application() {
     lateinit var container: AppContainer
@@ -56,6 +58,9 @@ class AppContainer(context: Context) {
 
     /** 촬영 화면 → 인식 결과 확인 화면으로 넘기는 임시 데이터 */
     var pendingDraft: ReceiptDraft? = null
+
+    /** 홈 화면에서 보고 있는 달. 다른 달 영수증을 저장하면 그 달로 바꿔서 방금 저장한 내역이 바로 보이게 한다 */
+    val homeMonth = MutableStateFlow(YearMonth.now())
 }
 
 /** 인식 결과 확인 화면에 미리 채울 값 */
