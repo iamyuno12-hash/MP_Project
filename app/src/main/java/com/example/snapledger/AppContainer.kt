@@ -9,14 +9,22 @@ import com.google.firebase.FirebaseApp
 import com.example.snapledger.data.local.AppDatabase
 import com.example.snapledger.data.local.SessionStore
 import com.example.snapledger.data.local.SettingsStore
+import com.example.snapledger.data.firebase.FirestoreExpenseBackup
+import com.example.snapledger.data.remote.GeminiApiClient
 import com.example.snapledger.data.remote.KakaoApiClient
 import com.example.snapledger.data.repository.CategoryClassifier
 import com.example.snapledger.data.repository.ExpenseRepository
+import com.example.snapledger.data.repository.ExpenseSync
 import com.example.snapledger.data.repository.RoomExpenseRepository
+import com.example.snapledger.model.Category
+import com.example.snapledger.ocr.GeminiReceiptReader
 import com.example.snapledger.ocr.ParsedReceipt
 import com.example.snapledger.ocr.ReceiptImagePreprocessor
 import com.example.snapledger.ocr.ReceiptParser
 import com.example.snapledger.ocr.ReceiptTextRecognizer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.time.YearMonth
 
@@ -38,12 +46,23 @@ class AppContainer(context: Context) {
     val appContext: Context = context.applicationContext
     private val database = AppDatabase.build(appContext)
 
-    val expenseRepository: ExpenseRepository = RoomExpenseRepository(database.expenseDao())
+    /** 화면과 상관없이 앱이 켜져 있는 동안 도는 작업용 (백업 업로드 등) */
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /** 로그인 상태 유지(자동 로그인) 설정 */
     val sessionStore = SessionStore(appContext)
     // google-services.json이 들어가 Firebase가 켜져 있으면 진짜 로그인, 아니면 테스트용 가짜 로그인
     val authRepository: AuthRepository =
         if (FirebaseApp.getApps(appContext).isNotEmpty()) FirebaseAuthRepository() else FakeAuthRepository(sessionStore)
+
+    /** Firestore 백업 (Firebase 로그인일 때만 실제로 동작, 테스트 모드면 아무것도 안 함) */
+    val expenseSync = ExpenseSync(
+        dao = database.expenseDao(),
+        backup = FirestoreExpenseBackup(authRepository),
+        auth = authRepository,
+        scope = appScope,
+    )
+    val expenseRepository: ExpenseRepository = RoomExpenseRepository(database.expenseDao(), expenseSync)
     val settingsStore = SettingsStore(appContext)
 
     val categoryClassifier = CategoryClassifier(
@@ -55,6 +74,12 @@ class AppContainer(context: Context) {
     val receiptRecognizer = ReceiptTextRecognizer(appContext)
     val receiptPreprocessor = ReceiptImagePreprocessor()
     val receiptParser = ReceiptParser()
+    /** Gemini AI 영수증 인식 (local.properties에 GEMINI_API_KEY가 없으면 꺼짐 → ML Kit만 사용) */
+    val geminiReader = GeminiReceiptReader(
+        api = BuildConfig.GEMINI_API_KEY.takeIf { it.isNotBlank() }?.let { GeminiApiClient.create(it) },
+        model = BuildConfig.GEMINI_MODEL,
+        parser = receiptParser,
+    )
 
     /** 촬영 화면 → 인식 결과 확인 화면으로 넘기는 임시 데이터 */
     var pendingDraft: ReceiptDraft? = null
@@ -72,4 +97,8 @@ data class ReceiptDraft(
     val processedImagePath: String? = null,
     /** 원본·보정 중 보정 이미지 쪽 인식 결과를 썼는지 */
     val usedProcessedImage: Boolean = false,
+    /** Gemini AI가 읽은 값을 썼는지 */
+    val usedAi: Boolean = false,
+    /** Gemini가 추천한 카테고리 (분류 규칙으로 못 정했을 때 사용) */
+    val aiCategory: Category? = null,
 )

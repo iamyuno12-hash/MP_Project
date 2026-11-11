@@ -33,6 +33,22 @@ interface ExpenseDao {
             "WHERE businessNumber = :businessNumber AND paidAt = :paidAt AND amount = :amount AND id != :exceptId"
     )
     suspend fun countSame(businessNumber: String, paidAt: Long, amount: Long, exceptId: Long): Int
+
+    // ---------- Firestore 백업용 ----------
+
+    @Query("SELECT * FROM expenses WHERE synced = 0")
+    suspend fun getUnsynced(): List<Expense>
+
+    @Query("SELECT COUNT(*) FROM expenses WHERE synced = 0")
+    fun observeUnsyncedCount(): Flow<Int>
+
+    /** 올린 뒤 표시. 올리는 사이에 사용자가 고쳤으면(값이 달라졌으면) 표시하지 않아 다음에 다시 올라간다 */
+    @Query("UPDATE expenses SET synced = 1 WHERE id = :id AND paidAt = :paidAt AND amount = :amount")
+    suspend fun markSynced(id: Long, paidAt: Long, amount: Long)
+
+    /** 복원할 때 이미 기기에 있는 내역인지 (처음 저장한 시각으로 판별) */
+    @Query("SELECT COUNT(*) FROM expenses WHERE createdAt = :createdAt")
+    suspend fun countByCreatedAt(createdAt: Long): Int
 }
 
 @Dao

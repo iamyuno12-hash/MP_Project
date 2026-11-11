@@ -116,8 +116,8 @@ class FirebaseAuthRepository : AuthRepository {
     }
 }
 
-/** Firebase의 Task를 코루틴에서 기다리기 */
-private suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { cont ->
+/** Firebase의 Task를 코루틴에서 기다리기 (Firestore 백업에서도 사용) */
+internal suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { cont ->
     addOnSuccessListener { cont.resume(it) }
     addOnFailureListener { cont.resumeWithException(it) }
 }

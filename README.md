@@ -13,6 +13,8 @@
 ## 주요 기능
 
 - **영수증 촬영 → 자동 입력**: ML Kit 문서 스캐너(테두리 인식·원근 보정) → 이미지 전처리(그림자 제거·대비 보정) → ML Kit 한국어 글자 인식 → 규칙 기반 파서로 상호명·결제일시·합계·사업자번호 추출 → 확인 후 저장
+- **Gemini AI 인식**: ML Kit과 동시에 영수증 사진을 Gemini에 보내 값을 JSON으로 받아, AI 값을 우선 쓰고 빈 칸은 ML Kit 값으로 채움 (키가 없거나 인터넷이 없으면 ML Kit만 사용)
+- **클라우드 백업**: 저장·수정·삭제할 때마다 Firestore에 자동 백업, 설정에서 지금 백업 / 백업에서 가져오기
   - 원본·보정 이미지를 둘 다 읽고, 값을 더 많이 찾은 쪽 결과를 사용
 - **카테고리 자동 분류**: 사용자 규칙 → 내장 키워드 사전 → 카카오 로컬 API 업종 조회
 - **통계**: 월별·연도별 통계와 이전 기간 이동, 지난달 같은 날까지와 비교하는 누적 지출 그래프, 카테고리 도넛 그래프, 연도별 월 지출 막대 그래프
@@ -28,7 +30,7 @@
 | 로컬 저장 | Room, DataStore |
 | 영수증 인식 | ML Kit Document Scanner, ML Kit Text Recognition v2 (한국어) |
 | 네트워크 | Retrofit2 + OkHttp (카카오 로컬 API) |
-| 서버 | Firebase Authentication, Cloud Firestore |
+| 서버·AI | Firebase Authentication, Cloud Firestore, Gemini API |
 | 그래프 | Compose Canvas (누적 비교 선 그래프, 도넛, 막대) |
 | 테스트 | JUnit 단위 테스트 34개 (영수증 파서·이미지 보정·통계 계산·자동 로그인) |
 
@@ -57,7 +59,20 @@ app/src/test/.../                       단위 테스트 (ReceiptParser, Receipt
 2. (선택) 카카오 업종 분류: 맨 위 `local.properties`에 `KAKAO_REST_API_KEY=발급받은키` 추가
 3. (선택) Firebase 로그인: Firebase 콘솔에서 받은 `google-services.json`을 `app/`에 넣고 `app/build.gradle.kts`의 `google.services` 플러그인 주석 해제
    - 넣지 않으면 **테스트 모드**(아무 이메일로나 로그인)로 동작
-4. ▶ 실행 (Android 8.0 이상, 문서 스캐너는 Google Play 서비스 필요)
+4. (선택) Gemini AI 인식: https://aistudio.google.com/apikey 에서 키를 받아 `local.properties`에 `GEMINI_API_KEY=발급받은키` 추가
+   - 모델을 바꾸려면 `GEMINI_MODEL=모델이름` (기본 `gemini-3.6-flash`)
+5. (선택) Firestore 백업: Firebase 콘솔 → Firestore Database 만들기 → 규칙(Rules)에 아래 내용 게시 (3번이 먼저 필요)
+   ```
+   rules_version = '2';
+   service cloud.firestore {
+     match /databases/{database}/documents {
+       match /users/{uid}/{document=**} {
+         allow read, write: if request.auth != null && request.auth.uid == uid;
+       }
+     }
+   }
+   ```
+6. ▶ 실행 (Android 8.0 이상, 문서 스캐너는 Google Play 서비스 필요)
 
 > `local.properties`, `google-services.json`은 키가 들어 있어 GitHub에 올리지 않는다. 팀원끼리 따로 전달한다.
 
