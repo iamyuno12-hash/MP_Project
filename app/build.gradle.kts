@@ -6,7 +6,7 @@ plugins {
     alias(libs.plugins.ksp)
     // Firebase 콘솔에서 받은 google-services.json을 app/ 폴더에 넣은 뒤 아래 줄의 주석을 푼다.
     // (파일 없이 주석을 풀면 빌드가 실패한다)
-    // alias(libs.plugins.google.services)
+    alias(libs.plugins.google.services)
 }
 
 // 카카오 REST API 키는 local.properties에서 읽는다 (GitHub에 올라가지 않음)
@@ -16,6 +16,10 @@ val localProps = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 val kakaoKey: String = localProps.getProperty("KAKAO_REST_API_KEY", "")
+// Gemini(AI 영수증 인식) 키: https://aistudio.google.com/apikey 에서 발급 →  GEMINI_API_KEY=발급받은키
+// 모델을 바꾸고 싶으면 GEMINI_MODEL=모델이름 (기본 gemini-3.6-flash)
+val geminiKey: String = localProps.getProperty("GEMINI_API_KEY", "")
+val geminiModel: String = localProps.getProperty("GEMINI_MODEL", "gemini-3.6-flash")
 
 android {
     namespace = "com.example.snapledger"
@@ -32,6 +36,8 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "KAKAO_REST_API_KEY", "\"$kakaoKey\"")
+        buildConfigField("String", "GEMINI_API_KEY", "\"$geminiKey\"")
+        buildConfigField("String", "GEMINI_MODEL", "\"$geminiModel\"")
     }
 
     buildTypes {
@@ -81,7 +87,7 @@ dependencies {
     implementation(libs.mlkit.text.recognition.korean)
     implementation(libs.mlkit.document.scanner)   // 영수증 테두리 자동 인식·평평하게 펴기·보정
 
-    // 네트워크 (카카오 로컬 API)
+    // 네트워크 (카카오 로컬 API, Gemini API)
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.okhttp.logging)

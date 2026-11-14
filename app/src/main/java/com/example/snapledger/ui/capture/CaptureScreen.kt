@@ -48,6 +48,7 @@ import com.example.snapledger.ReceiptDraft
 import com.example.snapledger.ocr.OcrRow
 import com.example.snapledger.ocr.ParsedReceipt
 import com.example.snapledger.ocr.RecognitionScorer
+import com.example.snapledger.ocr.mergedWith
 import com.example.snapledger.ocr.toRows
 import com.example.snapledger.ui.common.appViewModel
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
@@ -56,6 +57,7 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import com.google.mlkit.vision.text.Text as MlKitText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -70,11 +72,16 @@ class CaptureViewModel(private val container: AppContainer) : ViewModel() {
         error = message
     }
 
+    /** 화면 문구용: Gemini AI 인식이 켜져 있는지 */
+    val aiEnabled: Boolean get() = container.geminiReader.isEnabled
+
     /**
-     * 스캔된 영수증 → 앱 저장소에 원본 복사 → 두 가지 이미지로 글자 인식 → 더 잘 읽힌 쪽으로 확인 화면 초안
-     *  A) 문서 스캐너 결과 그대로
-     *  B) 그림자 제거·대비 보정한 이미지 (ReceiptImagePreprocessor)
-     * 사진마다 어느 쪽이 잘 읽히는지 달라서, 파서가 값을 더 많이 찾은 쪽을 고른다 (RecognitionScorer).
+     * 스캔된 영수증 → 앱 저장소에 원본 복사 → 글자 인식 → 확인 화면 초안
+     *  1) ML Kit: 두 가지 이미지로 읽어 더 잘 읽힌 쪽 선택 (기기 안에서, 인터넷 불필요)
+     *     A) 문서 스캐너 결과 그대로  B) 그림자 제거·대비 보정한 이미지 (ReceiptImagePreprocessor)
+     *  2) Gemini AI: 원본 사진을 보내 값을 직접 읽게 함 (키가 있을 때만, ML Kit과 동시에 진행)
+     *  → Gemini가 찾은 값을 우선 쓰고, 못 찾은 칸은 ML Kit 규칙 파서 값으로 채운다.
+     *    Gemini가 실패해도(인터넷 없음 등) ML Kit 결과만으로 그대로 진행한다.
      */
     fun recognize(imageUri: Uri, onDone: () -> Unit) {
         viewModelScope.launch {
@@ -82,27 +89,35 @@ class CaptureViewModel(private val container: AppContainer) : ViewModel() {
             error = null
             try {
                 val saved = withContext(Dispatchers.IO) { copyToAppStorage(imageUri) }
+                val ai = async { container.geminiReader.read(saved) }   // 기다리는 동안 ML Kit 인식
+
                 val original = toReading(container.receiptRecognizer.recognize(Uri.fromFile(saved)))
                 val processed = readProcessed(saved)
                 val useProcessed = processed != null &&
                     RecognitionScorer.preferProcessed(original.score, processed.reading.score)
                 val chosen = if (useProcessed) processed!!.reading else original
+                val aiResult = ai.await()
 
                 Log.d(
                     "Receipt",
                     "인식 점수: 원본 ${original.score}, 보정 ${processed?.reading?.score ?: "실패"} " +
-                        "→ ${if (useProcessed) "보정" else "원본"} 이미지 결과 사용",
+                        "→ ${if (useProcessed) "보정" else "원본"} 이미지 결과 사용" +
+                        ", Gemini ${if (aiResult != null) "성공" else if (aiEnabled) "실패" else "꺼짐"}",
                 )
                 // 테스트셋 만들 때 Logcat에서 'Receipt'로 검색해 복사 → ReceiptParserTest에 추가
                 Log.d("Receipt", chosen.rows.joinToString("\n") { "[h=${it.height}] ${it.text}" })
                 container.pendingDraft = ReceiptDraft(
                     imagePath = saved.absolutePath,
-                    parsed = chosen.parsed,
+                    parsed = chosen.parsed.mergedWith(aiResult?.parsed),
                     recognizedLines = chosen.rows.map { it.text },
                     processedImagePath = processed?.imageFile?.absolutePath,
                     usedProcessedImage = useProcessed,
+                    usedAi = aiResult != null,
+                    aiCategory = aiResult?.category,
                 )
                 onDone()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 error = "글자를 읽지 못했어요: ${e.message}"
             } finally {
@@ -237,7 +252,7 @@ fun CaptureScreen(onClose: () -> Unit, onNext: () -> Unit) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator()
                     Spacer(Modifier.height(8.dp))
-                    Text("영수증을 읽는 중…")
+                    Text(if (vm.aiEnabled) "AI가 영수증을 읽는 중…" else "영수증을 읽는 중…")
                 }
             } else {
                 Text(

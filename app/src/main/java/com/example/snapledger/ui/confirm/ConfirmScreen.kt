@@ -81,6 +81,9 @@ class ConfirmViewModel(private val container: AppContainer, private val expenseI
         private set
     var usedProcessedImage = false
         private set
+    /** Gemini AI가 읽은 값으로 채웠는지 (화면 안내 문구용) */
+    var usedAi = false
+        private set
     /** true면 원본 대신 보정 이미지를 보여준다 */
     var showProcessed by mutableStateOf(false)
     private var businessNumber: String? = null
@@ -100,13 +103,22 @@ class ConfirmViewModel(private val container: AppContainer, private val expenseI
                 imagePath = draft.imagePath
                 processedImagePath = draft.processedImagePath
                 usedProcessedImage = draft.usedProcessedImage
+                usedAi = draft.usedAi
                 businessNumber = draft.parsed.businessNumber
                 storeName = draft.parsed.storeName.orEmpty()
                 draft.parsed.paidAt?.let { dateText = it.format(DATE_TIME_FORMAT) }
                 draft.parsed.total?.let { amountText = it.toString() }
+                draft.aiCategory?.let {
+                    category = it
+                    autoClassified = true
+                }
                 if (storeName.isNotBlank()) {
                     viewModelScope.launch {
-                        category = classifier.classify(storeName, businessNumber)
+                        // 사용자가 정해 둔 규칙·키워드 사전·카카오 업종으로 정해지면 그걸 쓰고,
+                        // 못 정했으면(기타) Gemini가 추천한 카테고리를 쓴다
+                        val classified = classifier.classify(storeName, businessNumber)
+                        if (userPickedCategory) return@launch   // 그 사이 사용자가 직접 골랐으면 그대로
+                        if (classified != Category.ETC || draft.aiCategory == null) category = classified
                         autoClassified = true
                     }
                 }
@@ -222,6 +234,13 @@ fun ConfirmScreen(expenseId: Long, onBack: () -> Unit, onSaved: () -> Unit) {
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxWidth().height(180.dp).padding(vertical = 8.dp),
             )
+            if (vm.usedAi) {
+                Text(
+                    "Gemini AI가 읽은 값이에요. 틀린 곳이 있으면 고쳐 주세요",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             if (processedPath != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(

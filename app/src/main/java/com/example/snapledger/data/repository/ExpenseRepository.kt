@@ -22,18 +22,31 @@ interface ExpenseRepository {
     suspend fun isDuplicate(expense: Expense): Boolean
 }
 
-/** Room을 쓰는 실제 구현. Firestore 백업은 2단계에서 save/delete 뒤에 붙인다. */
-class RoomExpenseRepository(private val dao: ExpenseDao) : ExpenseRepository {
+/**
+ * Room을 쓰는 실제 구현.
+ * sync가 있으면 저장·삭제 뒤에 Firestore 백업을 뒤에서 처리한다 (화면은 기다리지 않음).
+ */
+class RoomExpenseRepository(
+    private val dao: ExpenseDao,
+    private val sync: ExpenseSync? = null,
+) : ExpenseRepository {
     override fun observeAll() = dao.observeAll()
     override fun observeBetween(from: Long, to: Long) = dao.observeBetween(from, to)
     override fun observe(id: Long) = dao.observeById(id)
     override suspend fun get(id: Long) = dao.getById(id)
     override suspend fun save(expense: Expense): Long {
-        val savedId = dao.upsert(expense)
+        // 새로 저장하거나 고친 내역은 '아직 안 올라감'으로 표시해 두고 백업한다
+        val savedId = dao.upsert(expense.copy(synced = false))
         // @Upsert는 수정일 때 -1을 돌려주므로 원래 id를 쓴다
-        return if (savedId == -1L) expense.id else savedId
+        val id = if (savedId == -1L) expense.id else savedId
+        sync?.uploadLater(id)
+        return id
     }
-    override suspend fun delete(id: Long) = dao.deleteById(id)
+    override suspend fun delete(id: Long) {
+        val expense = dao.getById(id)
+        dao.deleteById(id)
+        if (expense != null) sync?.removeLater(expense)
+    }
     override suspend fun isDuplicate(expense: Expense): Boolean {
         val bizNo = expense.businessNumber ?: return false
         return dao.countSame(bizNo, expense.paidAt, expense.amount, expense.id) > 0

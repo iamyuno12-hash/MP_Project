@@ -1,5 +1,8 @@
 package com.example.snapledger.ui.settings
 
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +14,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,17 +35,22 @@ import androidx.lifecycle.viewModelScope
 import com.example.snapledger.data.firebase.AuthRepository
 import com.example.snapledger.data.local.SessionStore
 import com.example.snapledger.data.local.SettingsStore
+import com.example.snapledger.data.repository.ExpenseSync
 import com.example.snapledger.ui.common.appViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 
 class SettingsViewModel(
     private val settings: SettingsStore,
     private val auth: AuthRepository,
     private val session: SessionStore,
+    private val sync: ExpenseSync,
 ) : ViewModel() {
     var budgetText by mutableStateOf("")
     var message by mutableStateOf<String?>(null)
@@ -73,6 +82,43 @@ class SettingsViewModel(
         viewModelScope.launch { session.setKeepSignedIn(keep) }
     }
 
+    // ---------- Firestore 백업 ----------
+
+    val backupAvailable: Boolean get() = sync.isAvailable
+    var backupBusy by mutableStateOf(false)
+        private set
+    var backupMessage by mutableStateOf<String?>(null)
+        private set
+
+    /** 아직 클라우드에 안 올라간 내역 수 */
+    val unsyncedCount: StateFlow<Int> =
+        sync.observeUnsyncedCount().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
+    fun backupNow() = runBackup { n -> if (n > 0) "${n}건을 백업했어요" else "이미 모두 백업돼 있어요" }
+
+    fun restore() = runBackup(restore = true) { n -> if (n > 0) "${n}건을 가져왔어요" else "새로 가져올 내역이 없어요" }
+
+    private fun runBackup(restore: Boolean = false, done: (Int) -> String) {
+        if (backupBusy) return
+        viewModelScope.launch {
+            backupBusy = true
+            backupMessage = null
+            backupMessage = try {
+                // 인터넷이 없으면 Firestore가 연결될 때까지 기다리므로 시간 제한을 둔다
+                val count = withTimeout(20_000) { if (restore) sync.restore() else sync.backupAll() }
+                done(count)
+            } catch (e: TimeoutCancellationException) {
+                "인터넷 연결을 확인해 주세요"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                "실패했어요: ${e.message}"
+            } finally {
+                backupBusy = false
+            }
+        }
+    }
+
     /** 저장된 로그인 정보까지 지운 뒤 onDone (로그인 화면으로 이동) */
     fun signOut(onDone: () -> Unit) {
         viewModelScope.launch {
@@ -84,10 +130,12 @@ class SettingsViewModel(
 
 @Composable
 fun SettingsScreen(onLoggedOut: () -> Unit) {
-    val vm = appViewModel { SettingsViewModel(it.settingsStore, it.authRepository, it.sessionStore) }
+    val vm = appViewModel { SettingsViewModel(it.settingsStore, it.authRepository, it.sessionStore, it.expenseSync) }
     val keepSignedIn by vm.keepSignedIn.collectAsStateWithLifecycle()
+    val unsyncedCount by vm.unsyncedCount.collectAsStateWithLifecycle()
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    // 항목이 늘어 작은 화면에서는 넘칠 수 있으므로 스크롤
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
         Text("설정", style = MaterialTheme.typography.titleLarge)
         Spacer(Modifier.height(16.dp))
 
@@ -108,9 +156,38 @@ fun SettingsScreen(onLoggedOut: () -> Unit) {
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
 
-        Text("백업", style = MaterialTheme.typography.titleMedium)
-        // TODO(백엔드, 2단계): Firestore 백업/복원
-        Text("Firestore 백업은 2단계에서 연결 예정", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("클라우드 백업", style = MaterialTheme.typography.titleMedium)
+        if (vm.backupAvailable) {
+            Text(
+                if (unsyncedCount == 0) "모든 내역이 백업돼 있어요 (저장할 때마다 자동 백업)"
+                else "백업 안 된 내역 ${unsyncedCount}건 (인터넷이 연결되면 자동으로 올라가요)",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(onClick = vm::backupNow, enabled = !vm.backupBusy, modifier = Modifier.weight(1f)) {
+                    Text("지금 백업")
+                }
+                OutlinedButton(onClick = vm::restore, enabled = !vm.backupBusy, modifier = Modifier.weight(1f)) {
+                    Text("백업에서 가져오기")
+                }
+            }
+            if (vm.backupBusy) LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+            vm.backupMessage?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+            Text(
+                "영수증 사진은 기기에만 저장되고, 내역 값만 백업돼요",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                if (vm.usesFirebase) "로그인하면 백업할 수 있어요"
+                else "테스트 모드에서는 백업할 수 없어요. Firebase를 연결하고 로그인하면 자동으로 백업돼요",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         Spacer(Modifier.height(16.dp))
         HorizontalDivider()
