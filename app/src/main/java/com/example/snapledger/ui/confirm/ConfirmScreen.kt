@@ -50,6 +50,7 @@ import com.example.snapledger.ui.common.toEpochMillis
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDateTime
+import java.time.YearMonth
 
 /**
  * 인식 결과 확인 + 직접 입력 + 기존 내역 수정을 한 화면에서 처리한다.
@@ -64,6 +65,9 @@ class ConfirmViewModel(private val container: AppContainer, private val expenseI
     var amountText by mutableStateOf("")
     var memo by mutableStateOf("")
     var category by mutableStateOf(Category.ETC)
+        private set
+    /** 마지막으로 저장한 내역의 결제 월 (저장 알림 문구용) */
+    var savedMonth: YearMonth? = null
         private set
     var autoClassified by mutableStateOf(false)
         private set
@@ -168,6 +172,10 @@ class ConfirmViewModel(private val container: AppContainer, private val expenseI
                     classifier.remember(expense.storeName, expense.businessNumber, expense.category)
                 }
                 repository.save(expense)
+                // 홈 화면을 저장한 내역의 결제 월로 맞춘다 (지난달 영수증도 저장 직후 목록에서 보이도록)
+                val month = YearMonth.from(paidAt)
+                savedMonth = month
+                container.homeMonth.value = month
                 onSaved()
             } catch (e: Exception) {
                 Log.e("ConfirmViewModel", "저장 실패", e)
@@ -182,7 +190,9 @@ fun ConfirmScreen(expenseId: Long, onBack: () -> Unit, onSaved: () -> Unit) {
     val vm = appViewModel { ConfirmViewModel(it, expenseId) }
     val context = LocalContext.current
     val onSavedWithToast = {
-        Toast.makeText(context, "저장했어요", Toast.LENGTH_SHORT).show()
+        val month = vm.savedMonth
+        val text = if (month != null && month != YearMonth.now()) "${month.monthValue}월 내역으로 저장했어요" else "저장했어요"
+        Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
         onSaved()
     }
     val title = when {
